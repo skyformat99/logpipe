@@ -8,8 +8,10 @@
 
 #include "logpipe_in.h"
 
+/* QUIT信号标志 */
 static sig_atomic_t		g_QUIT_flag = 0 ;
 
+/* 信号处理回调函数 */
 static void sig_set_flag( int sig_no )
 {
 	/* 接收到不同信号设置不同的全局标志，延后到主流程中处理 */
@@ -21,6 +23,7 @@ static void sig_set_flag( int sig_no )
 	return;
 }
 
+/* 设置只供给一次的配置参数，通过环境变量传递 */
 static void SetStartOnceEnv( struct LogpipePluginConfigItem *start_once )
 {
 	struct LogpipePluginConfigItem	*item = NULL ;
@@ -33,6 +36,7 @@ static void SetStartOnceEnv( struct LogpipePluginConfigItem *start_once )
 	return;
 }
 
+/* 清除只供给一次的配置参数 */
 static void UnsetStartOnceEnv( struct LogpipePluginConfigItem *start_once )
 {
 	struct LogpipePluginConfigItem	*item = NULL ;
@@ -45,12 +49,17 @@ static void UnsetStartOnceEnv( struct LogpipePluginConfigItem *start_once )
 	return;
 }
 
+/* 父进程主函数 */
 int monitor( struct LogpipeEnv *p_env )
 {
 	struct sigaction	act ;
 	
 	pid_t			pid , pid2 ;
 	int			status ;
+	
+	time_t			tt ;
+	struct tm		stime ;
+	struct tm		old_stime ;
 	
 	int			nret = 0 ;
 	
@@ -69,14 +78,21 @@ int monitor( struct LogpipeEnv *p_env )
 	act.sa_flags = SA_RESTART ;
 	signal( SIGCLD , SIG_DFL );
 	
+	/* 设置只供给一次的配置参数 */
 	SetStartOnceEnv( & (p_env->start_once_for_plugin_config_items) );
+	
+	/* 保存初始时点 */
+	time( & tt );
+	memset( & old_stime , 0x00 , sizeof(struct tm) );
+	localtime_r( & tt , & old_stime );
 	
 	while( g_QUIT_flag == 0 )
 	{
+		/* 创建父子进程命令管道 */
 		nret = pipe( p_env->quit_pipe ) ;
 		if( nret == -1 )
 		{
-			FATALLOG( "pipe failed , errno[%d]" , errno )
+			FATALLOGC( "pipe failed , errno[%d]" , errno )
 			return -1;
 		}
 		
@@ -84,27 +100,39 @@ int monitor( struct LogpipeEnv *p_env )
 		pid = fork() ;
 		if( pid == -1 )
 		{
-			FATALLOG( "fork failed , errno[%d]" , errno )
+			FATALLOGC( "fork failed , errno[%d]" , errno )
 			return -1;
 		}
 		else if( pid == 0 )
 		{
 			close( p_env->quit_pipe[1] );
-			INFOLOG( "child : [%ld] fork [%ld]" , getppid() , getpid() )
-			return -worker( p_env );
+			INFOLOGC( "child : [%ld] fork [%ld]" , getppid() , getpid() )
+			exit(-worker(p_env));
 		}
 		else
 		{
 			close( p_env->quit_pipe[0] );
-			INFOLOG( "parent : [%ld] fork [%ld]" , getpid() , pid )
+			INFOLOGC( "parent : [%ld] fork [%ld]" , getpid() , pid )
+			/* 清除只供给一次的配置参数 */
 			UnsetStartOnceEnv( & (p_env->start_once_for_plugin_config_items) );
 		}
 		
 _GOTO_WAITPID :
 		
 		/* 堵塞等待工作进程结束 */
-		DEBUGLOG( "waitpid ..." )
+		DEBUGLOGC( "waitpid ..." )
 		pid2 = waitpid( pid , & status , 0 );
+		
+		/* 如果当前时点与上一次不一致，则切换日志文件 */
+		time( & tt );
+		memset( & stime , 0x00 , sizeof(struct tm) );
+		localtime_r( & tt , & stime );
+		if( stime.tm_hour != old_stime.tm_hour )
+		{
+			SetLogcFile( "%s.%d" , p_env->log_file , stime.tm_hour );
+			memcpy( & old_stime , & stime , sizeof(struct tm) );
+		}
+		
 		if( pid2 == -1 )
 		{
 			if( errno == EINTR )
@@ -124,22 +152,22 @@ _GOTO_WAITPID :
 				}
 			}
 			
-			FATALLOG( "waitpid failed , errno[%d]" , errno )
+			FATALLOGC( "waitpid failed , errno[%d]" , errno )
 			return -1;
 		}
 		else if( pid2 != pid )
 		{
-			FATALLOG( "unexpect other child[%d]" , pid2 )
+			FATALLOGC( "unexpect other child[%d]" , pid2 )
 		}
 		
 		/* 检查工作进程是否正常结束 */
 		if( WEXITSTATUS(status) == 0 && WIFSIGNALED(status) == 0 && WTERMSIG(status) == 0 )
 		{
-			INFOLOG( "waitpid[%d] WEXITSTATUS[%d] WIFSIGNALED[%d] WTERMSIG[%d]" , pid , WEXITSTATUS(status) , WIFSIGNALED(status) , WTERMSIG(status) )
+			INFOLOGC( "waitpid[%d] WEXITSTATUS[%d] WIFSIGNALED[%d] WTERMSIG[%d]" , pid , WEXITSTATUS(status) , WIFSIGNALED(status) , WTERMSIG(status) )
 		}
 		else
 		{
-			FATALLOG( "waitpid[%d] WEXITSTATUS[%d] WIFSIGNALED[%d] WTERMSIG[%d]" , pid , WEXITSTATUS(status) , WIFSIGNALED(status) , WTERMSIG(status) )
+			FATALLOGC( "waitpid[%d] WEXITSTATUS[%d] WIFSIGNALED[%d] WTERMSIG[%d]" , pid , WEXITSTATUS(status) , WIFSIGNALED(status) , WTERMSIG(status) )
 		}
 		
 		if( p_env->quit_pipe[1] >= 0 )
@@ -155,6 +183,7 @@ _GOTO_WAITPID :
 	return 0;
 }
 
+/* 父进程入口函数 */
 int _monitor( void *pv )
 {
 	struct LogpipeEnv	*p_env = (struct LogpipeEnv *)pv ;
@@ -163,17 +192,18 @@ int _monitor( void *pv )
 	
 	int			nret = 0 ;
 	
+	/* 设置父进程日志文件名 */
 	time( & tt );
 	memset( & stime , 0x00 , sizeof(struct tm) );
 	localtime_r( & tt , & stime );
-	SetLogFile( "%s.%d" , p_env->log_file , stime.tm_hour );
-	SetLogLevel( p_env->log_level );
+	SetLogcFile( "%s.%d" , p_env->log_file , stime.tm_hour );
+	SetLogcLevel( p_env->log_level );
 	
-	INFOLOG( "--- monitor begin ---------" )
+	INFOLOGC( "--- monitor begin ---------" )
 	
 	nret = monitor( p_env ) ;
 	
-	INFOLOG( "--- monitor end ---------" )
+	INFOLOGC( "--- monitor end ---------" )
 	
 	return nret;
 }

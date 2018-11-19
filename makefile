@@ -9,6 +9,8 @@
 DIROBJS		= \
 			src \
 			src-plugins \
+			shbin \
+			test \
 
 ###### ¼ÓÔØmktplÄ£°å¿â
 #@ FILESYSTEM
@@ -17,5 +19,5 @@ DIROBJS		= \
 #@ dir_clean
 #@ dir_install
 #@ dir_uninstall
-include $(MKTPLDIR)/makedir_$(MKTPLOS).inc
+include $(MKTPL2_HOME)/makedir_$(MKTPL2_OS).inc
 

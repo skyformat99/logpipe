@@ -9,27 +9,33 @@
 #include "logpipe_in.h"
 
 /* cmd for testing
-ps -ef | grep "logpipe -f" | awk '{if($3==1)print $2}' | xargs kill
+ps -f -u $USER | grep "logpipe -f" | awk '{if($3==1)print $2}' | xargs kill
 */
 
-char	__LOGPIPE_VERSION_0_10_1[] = "0.10.1" ;
-char	*__LOGPIPE_VERSION = __LOGPIPE_VERSION_0_10_1 ;
+char __LOGPIPE_VERSION_1_0_8[] = "1.0.8" ;
+char *__LOGPIPE_VERSION = __LOGPIPE_VERSION_1_0_8 ;
 
+/* 显示版本号 */
 static void version()
 {
 	printf( "logpipe v%s build %s %s\n" , __LOGPIPE_VERSION , __DATE__ , __TIME__ );
 	return;
 }
 
+/* 显示命令行语法 */
 static void usage()
 {
 	printf( "USAGE : logpipe -v\n" );
 	printf( "        logpipe -f (config_file) [ --no-daemon ] [ --start-once-for-env \"(key) (value)\" ]\n" );
+	printf( "NOTICE : shell : ulimit -n 65536\n" );
+	printf( "NOTICE : add to sysctl.conf : fs.inotify.max_user_watches=99999999\n" );
+        printf( "                              fs.inotify.max_queued_events=99999999\n" );
 	return;
 }
 
 #define START_ONCE_FOR_ENV		"--start-once-for-env"
 
+/* 解析命令行参数 */
 static int ParseCommandParameters( struct LogpipeEnv *p_env , int argc , char *argv[] )
 {
 	int		c ;
@@ -59,7 +65,7 @@ static int ParseCommandParameters( struct LogpipeEnv *p_env , int argc , char *a
 			nret = AddPluginConfigItem( & (p_env->start_once_for_plugin_config_items) , key , strlen(key) , value , strlen(value) ) ;
 			if( nret )
 			{
-				ERRORLOG( "AddPluginConfigItem [%s][%s] failed" , key , value );
+				ERRORLOGC( "AddPluginConfigItem [%s][%s] failed" , key , value )
 				return -1;
 			}
 			c++;
@@ -79,12 +85,14 @@ static int ParseCommandParameters( struct LogpipeEnv *p_env , int argc , char *a
 	return 0;
 }
 
+/* 入口函数 */
 int main( int argc , char *argv[] )
 {
 	struct LogpipeEnv	*p_env = NULL ;
 	
 	int			nret = 0 ;
 	
+	/* 设置标准输出无缓冲 */
 	setbuf( stdout , NULL );
 	
 	if( argc == 1 )
@@ -93,41 +101,49 @@ int main( int argc , char *argv[] )
 		exit(0);
 	}
 	
-	SetLogFile( "#" );
-	SetLogLevel( LOGLEVEL_DEBUG );
+	/* 所有日志输出先输出到屏幕上 */
+	SetLogcFile( "#stdout" );
+	SetLogcLevel( LOGCLEVEL_DEBUG );
 	
+	/* 分配内存给环境结构 */
 	p_env = (struct LogpipeEnv *)malloc( sizeof(struct LogpipeEnv) ) ;
 	if( p_env == NULL )
 	{
-		ERRORLOG( "malloc failed , errno[%d]" , errno )
+		ERRORLOGC( "malloc failed , errno[%d]" , errno )
 		return 1;
 	}
 	memset( p_env , 0x00 , sizeof(struct LogpipeEnv) );
 	
+	/* 初始化环境结构 */
 	INIT_LIST_HEAD( & (p_env->start_once_for_plugin_config_items.this_node) );
 	p_env->epoll_fd = -1 ;
 	INIT_LIST_HEAD( & (p_env->logpipe_input_plugins_list.this_node) );
 	INIT_LIST_HEAD( & (p_env->logpipe_output_plugins_list.this_node) );
 	
+	/* 解析命令行参数 */
 	nret = ParseCommandParameters( p_env , argc , argv ) ;
 	if( nret )
 		return -nret;
 	
+	/* 装载配置文件 */
 	nret = LoadConfig( p_env ) ;
 	if( nret )
 		return -nret;
 	
 	if( list_empty( & (p_env->logpipe_input_plugins_list.this_node) ) )
 	{
-		ERRORLOG( "no inputs" )
+		ERRORLOGC( "no inputs" )
 		return 1;
 	}
+	/*
 	if( list_empty( & (p_env->logpipe_output_plugins_list.this_node) ) )
 	{
-		ERRORLOG( "no outputs" )
+		ERRORLOGC( "no outputs" )
 		return 1;
 	}
+	*/
 	
+	/* 进入父进程代码 */
 	if( p_env->no_daemon )
 	{
 		umask( 0 ) ;
@@ -136,11 +152,14 @@ int main( int argc , char *argv[] )
 	}
 	else
 	{
+		/* 以守护进程方式 */
 		nret = BindDaemonServer( & _monitor , (void*)p_env , 1 ) ;
 	}
 	
+	/* 卸载配置 */
 	UnloadConfig( p_env );
 	
+	/* 释放环境结构 */
 	free( p_env );
 	
 	return -nret;

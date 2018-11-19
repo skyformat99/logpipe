@@ -1,0 +1,68 @@
+
+
+
+查询所有index
+curl -XGET 'http://158.1.0.53:9200/_cat/indices?v'
+
+新建index
+curl -H 'Content-Type: application/json' -XPUT '158.1.0.53:9200/ecif_platform' -d'
+{
+    "mappings" :
+    {
+        "data" :
+        {
+            "properties" :
+            {
+		"system_id" : { "type" : "keyword" } ,
+		"system_desc" : { "type" : "keyword" } ,
+                "trans_date" : { "type" : "date" , "format" : "YYYY-MM-dd" } ,
+                "trans_time" : { "type" : "date" , "format" : "HH:mm:ss" } ,
+		"source_channel" : { "type" : "keyword" } ,
+		"source_netaddr" : { "type" : "keyword" } ,
+		"dest_netaddr" : { "type" : "keyword" } ,
+                "comm_app_code" : { "type" : "keyword" } ,
+                "comm_app_desc" : { "type" : "keyword" } ,
+		"comm_status_code" : { "type" : "short" } ,
+                "total_elapse" : { "type" : "float" } ,
+                "keepalive_elapse" : { "type" : "float" } ,
+                "comm_recv_elapse" : { "type" : "float" } ,
+                "app_elapse" : { "type" : "float" } ,
+                "comm_send_elapse" : { "type" : "float" } ,
+                "somain_elapse" : { "type" : "float" }
+            }
+        }
+    }
+}
+'
+
+删除index
+curl -XDELETE '158.1.0.53:9200/ecif_platform'
+
+
+手工插入记录
+curl -H "Content-Type: application/json" -XPOST '158.1.0.53:9200/ecif_platform/data' -d'{ "trans_date":"2018-01-03","trans_time":"15:00:00" , "comm_app_desc":"wonita" }'
+
+手工插入记录
+telnet 158.1.0.53 9200
+POST /ecif_platform/data HTTP/1.1
+Content-Type: application/json
+Content-length: 78
+
+{"trans_date":"2018-01-03","trans_time":"15:00:00" , "comm_app_desc":"wonita"}
+
+
+
+
+
+
+# for ulimit
+ulimit -u 4096
+
+# for sysctl.conf
+vm.max_map_count=262144
+
+# for elasticsearch.yml
+# ----------------------------------- Memory -----------------------------------
+bootstrap.memory_lock: false
+bootstrap.system_call_filter: false
+

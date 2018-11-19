@@ -11,6 +11,7 @@ c_FILE		=	\
 			main.c \
 			monitor.c \
 			worker.c \
+			logpipe_fifo.c \
 
 c_FILE2		=	\
 			list.c \
@@ -20,6 +21,7 @@ c_FILE2		=	\
 			config.c \
 			env.c \
 			util.c \
+			idle.c \
 			output.c \
 			crypto.c \
 
@@ -30,6 +32,7 @@ BININST		=	$(_BININST)
 LIB		=	liblogpipe_api.so
 LIBINST		=	$(_LIBINST)
 HDER		= \
+			list.h \
 			rbtree.h \
 			LOGC.h \
 			fasterjson.h \
@@ -47,6 +50,7 @@ LFLAGS		=	$(_LFLAGS) \
 			-rdynamic \
 			-ldl \
 			-lz \
+			-lm \
 
 ###### 额外宏定义区
 CLEAN_ADDITION	=
@@ -62,7 +66,7 @@ CLEAN_ADDITION	=
 #@ make_uninstall_BININST
 #@ make_uninstall_LIBINST
 #@ make_uninstall_HDERINST
-include $(MKTPLDIR)/makeobj_$(MKTPLOS).inc
+include $(MKTPL2_HOME)/makeobj_$(MKTPL2_OS).inc
 
 ###### 目标文件依赖关系
 logpipe		:	$(c_FILE_o) liblogpipe_api.so

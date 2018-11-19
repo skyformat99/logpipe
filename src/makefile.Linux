@@ -12,11 +12,11 @@ MAKEFILE_POSTFIX=.Linux
 AR		=	ar
 AFLAGS		=	rv
 SOFLAGS		=	-shared
-ESOFLAGS	=	
+ESOFLAGS	=	-rdynamic	
 
 # c源代码文件宏及推导规则
-CC		=	gcc -g -fPIC -O2 -Wall -Werror -fno-strict-aliasing -std=gnu99
-CC_NOWARN	=	gcc -g -fPIC -O2 -std=gnu99
+CC		=	gcc -g -fPIC -O2 -Wall -Werror -fno-strict-aliasing
+CC_NOWARN	=	gcc -g -fPIC -O2
 
 c_FILE_o	=	$(c_FILE:.c=.o)
 c_FILE2_o	=	$(c_FILE2:.c=.o)
@@ -33,6 +33,7 @@ c_FILE		=	\
 			main.c \
 			monitor.c \
 			worker.c \
+			logpipe_fifo.c \
 
 c_FILE2		=	\
 			list.c \
@@ -42,6 +43,7 @@ c_FILE2		=	\
 			config.c \
 			env.c \
 			util.c \
+			idle.c \
 			output.c \
 			crypto.c \
 
@@ -52,6 +54,7 @@ BININST		=	$(_BININST)
 LIB		=	liblogpipe_api.so
 LIBINST		=	$(_LIBINST)
 HDER		= \
+			list.h \
 			rbtree.h \
 			LOGC.h \
 			fasterjson.h \
@@ -69,13 +72,17 @@ LFLAGS		=	$(_LFLAGS) \
 			-rdynamic \
 			-ldl \
 			-lz \
+			-lm \
 
 ###### 额外宏定义区
 CLEAN_ADDITION	=
 
 ###### 加载mktpl模板库
 # 最终目标列表
-all	:	$(OBJ) $(OBJ2) $(LIB) $(LIB2) $(SQL) $(NOINST_OBJ) $(BIN) $(BIN2)
+all		:	$(OBJ) $(OBJ2) $(LIB) $(LIB2) $(SQL) $(NOINST_OBJ) $(BIN) $(BIN2)
+
+prepro_all	:	$(PREPRO)
+
 
 # 文件系统宏
 CD		=	cd

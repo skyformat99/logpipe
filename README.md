@@ -7,7 +7,10 @@
     - [2.1. 源码编译安装](#21-源码编译安装)
         - [2.1.1. 编译安装logpipe](#211-编译安装logpipe)
         - [2.1.2. 编译安装自带logpipe插件](#212-编译安装自带logpipe插件)
-        - [2.1.3. 确认安装](#213-确认安装)
+        - [2.1.3. 编译安装自带选安装logpipe插件](#213-编译安装自带选安装logpipe插件)
+            - [2.1.3.1. logpipe-output-hdfs](#2131-logpipe-output-hdfs)
+            - [2.1.3.2. logpipe-output-ek](#2132-logpipe-output-ek)
+        - [2.1.4. 确认安装](#214-确认安装)
 - [3. 使用](#3-使用)
     - [3.1. 案例A](#31-案例a)
         - [3.1.1. 部署归集端](#311-部署归集端)
@@ -22,6 +25,9 @@
         - [4.2.2. logpipe-output-file](#422-logpipe-output-file)
         - [4.2.3. logpipe-input-tcp](#423-logpipe-input-tcp)
         - [4.2.4. logpipe-output-tcp](#424-logpipe-output-tcp)
+        - [4.2.5. logpipe-input-exec](#425-logpipe-input-exec)
+        - [4.2.6. logpipe-output-hdfs](#426-logpipe-output-hdfs)
+        - [4.2.7. logpipe-output-ek](#427-logpipe-output-ek)
 - [5. 插件开发](#5-插件开发)
     - [5.1. 输入插件](#51-输入插件)
     - [5.2. 输出插件](#52-输出插件)
@@ -42,17 +48,21 @@
 
 logpipe是一个分布式、高可用的用于采集、传输、对接落地的日志工具，采用了插件风格的框架结构设计，支持多输入多输出按需配置组件用于流式日志收集架构，无第三方依赖。
 
+logpipe的一种用法是能异步实时监控集群里的所有日志目录，一旦有文件新增或追加写，立即采集并传输到大存储上以相同日志文件名合并落地，或者写入HDFS。异步意味着不影响应用输出日志的性能，实时意味着一有日志立即采集，很多日志采集工具如flume-ng、logstash介绍文档通篇不提采集方式是否实时还是周期性的，这很关键。
+
 ![logpipe.png](logpipe.png)
 
 logpipe概念朴实、使用方便、配置简练，没有如sink等一大堆新名词。
 
 logpipe由若干个input、事件总线和若干个output组成。启动logpipe管理进程(monitor)，派生一个工作进程(worker)，监控工作进程崩溃则重启工作进程。工作进程装载配置加载若干个input插件和若干个output插件，进入事件循环，任一input插件产生消息后输出给所有output插件。
 
-logpipe自带了4个插件（今后将开发更多插件），分别是：
+logpipe自带了5个插件（今后将开发更多插件），分别是：
 * logpipe-input-file 用inotify异步实时监控日志目录，一旦有文件新建或文件增长事件发生（注意：不是周期性轮询文件修改时间和大小），立即捕获文件名和读取文件追加数据。该插件拥有文件大小转档功能，用以替代应用日志库对应功能，提高应用日志库写日志性能。该插件支持数据压缩。
 * logpipe-output-file 一旦输入插件有消息产生后用相同的文件名落地文件数据。该插件支持数据解压。
 * logpipe-input-tcp 创建TCP服务侦听端，接收客户端连接，一旦客户端连接上有新消息到来，立即读取。
 * logpipe-output-tcp 创建TCP客户端，连接服务端，一旦输入插件有消息产生后输出到该连接。
+* logpipe-input-exec 执行长命令并捕获输出
+* logpipe-output-hdfs 一旦输入插件有消息产生后用相同的文件名落地到HDFS中。该插件支持数据解压。
 
 使用者可根据自身需求，按照插件开发规范，开发定制插件，如IBMMQ输入插件、HDFS输出插件等。
 
@@ -160,7 +170,54 @@ rm -f /home/calvin/so/logpipe-output-tcp.so
 cp -rf logpipe-output-tcp.so /home/calvin/so/
 ```
 
-### 2.1.3. 确认安装
+### 2.1.3. 编译安装自带选安装logpipe插件
+
+#### 2.1.3.1. logpipe-output-hdfs
+
+注意先修改好里你的编译链接环境，包含但不限于
+
+`~/.bash_profile`
+
+```
+# for hadoop
+export HADOOP_HOME=/home/hdfs/expack/hadoop
+export PATH=$HADOOP_HOME/bin:$PATH
+export HADOOP_CLASSPATH=`hadoop classpath --glob`
+export CLASSPATH=$HADOOP_CLASSPATH:$CLASSPATH
+export LD_LIBRARY_PATH=$HADOOP_HOME/lib/native:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=$JAVA_HOME/jre/lib/amd64/server:$LD_LIBRARY_PATH
+```
+
+`makefile.Linux`
+
+```
+...
+CFLAGS_hdfs                     =       $(CFLAGS) -I/home/hdfs/expack/hadoop/include
+...
+LFLAGS_hdfs                     =       $(LFLAGS) -L/home/hdfs/expack/hadoop/lib/native -lhdfs -L$(HOME)/expack/jdk1.8.0_152/jre/lib/amd64/server -ljvm
+...
+```
+
+在`src-plugins`，手工编译插件并复制到`$HOME/so`目录
+
+```
+$ make -f makefile.Linux logpipe-output-hdfs.so
+gcc -g -fPIC -O2 -Wall -Werror -fno-strict-aliasing -I. -I/home/calvin/include -std=gnu99 -I/home/calvin/include/logpipe  -I/home/hdfs/expack/hadoop/include -c logpipe-output-hdfs.c
+gcc -g -fPIC -O2 -Wall -Werror -fno-strict-aliasing -o logpipe-output-hdfs.so logpipe-output-hdfs.o -shared -L. -L/home/calvin/so -L/home/calvin/lib -llogpipe_api -rdynamic  -L/home/hdfs/expack/hadoop/lib/native -lhdfs -L/home/calvin/expack/jdk1.8.0_152/jre/lib/amd64/server -ljvm
+$ cp logpipe-output-hdfs.so ~/so/
+```
+
+#### 2.1.3.2. logpipe-output-ek
+
+```
+$ make logpipe-output-ek.so && cp logpipe-output-ek.so ~/so/
+gcc -g -fPIC -O2 -Wall -Werror -fno-strict-aliasing -std=gnu99 -I. -I/home/dep_lhh/include -std=gnu99 -I/home/dep_lhh/include/logpipe  -c logpipe-output-ek.c
+gcc -g -fPIC -O2 -Wall -Werror -fno-strict-aliasing -std=gnu99 -I. -I/home/dep_lhh/include -std=gnu99 -I/home/dep_lhh/include/logpipe  -c fasterhttp.c
+gcc -g -fPIC -O2 -Wall -Werror -fno-strict-aliasing -std=gnu99 -o logpipe-output-ek.so logpipe-output-ek.o fasterhttp.o -shared -L. -L/home/dep_lhh/so -L/home/dep_lhh/lib -llogpipe_api -rdynamic 
+$ cp logpipe-output-ek.so ~/so/
+```
+
+### 2.1.4. 确认安装
 
 确认`$HOME/bin`已经加入到`$PATH`中，不带参数执行`logpipe`，输出以下信息表示源码编译安装成功
 
@@ -178,6 +235,10 @@ logpipe v0.9.0 build Dec 19 2017 22:44:54
 ```
 
 # 3. 使用
+
+注意：如果使用logpipe-input-file插件，建议调大系统inotify队列限制参数，添加sysctl.conf.add中内容到/etc/sysctl.conf并刷新配置`sysctl -p`（需要root权限），否则可能会丢失日志。
+
+注意：安装包中自带配置示例的log.log_level日志等级可能为DEBUG，会输出大量日志，影响性能也占用大量硬盘空间，请提升为WARN或INFO等级。
 
 ## 3.1. 案例A
 
@@ -401,13 +462,20 @@ $ logpipe -f $HOME/etc/logpipe.conf --start-once-for-env "start_once_for_full_do
 
 ### 4.2.1. logpipe-input-file
 
+基于inotify异步实时监控日志目录中新建文件或追加写文件事件，读取增量日志。
+
 配置项
 
 * `path` : 受到监控的目录，监控新建文件事件和文件新追加数据事件；建议用绝对路径；必选
-* `rotate_size` : 文件大小转档阈值，当受监控文件大小超过该大小时自动改名为"_(原文件名-日期_时间)"并脱离监控；不填或0为关闭；可选
+* `files`,`files2`,`files3` : 挑选文件名的通配表达式，用'*'表示0个或多个字符，用'?'表示1个字符；可选
+* `exclude_files`,`exclude_files2`,`exclude_files3` : 过滤文件名的通配表达式，用'*'表示0个或多个字符，用'?'表示1个字符；可选
+* `rotate_size` : 文件大小转档阈值，当受监控文件大小超过该大小时自动改名为"_(原文件名-日期_时间)"并脱离监控；不填或0为关闭；支持单位后缀，如MB；可选
 * `exec_before_rotating` : 触发文件大小转档前要执行的命令（如转档前向Nginx发送USR1信号触发重新打开日志文件），命令中出现的`"`用`\"`转义，可使用内置环境变量；同步执行；可选
 * `exec_after_rotating` : 触发文件大小转档后要执行的命令（如转档后压缩保存日志文件节省存储空间），命令中出现的`"`用`\"`转义，可使用内置环境变量；同步执行；可选
 * `compress_algorithm` : 采集数据后压缩，目前算法只有"deflate"；可选
+* `max_append_count` : 最大跟随次数，默认为0不跟随；可选
+* `max_usleep_interval` : 最大沉睡间隔，防止CPU被耗完；不填为不沉睡；可选
+* `min_usleep_interval` : 最小沉睡间隔，防止CPU被耗完；不填为不沉睡；可选
 
 配置项`exec_before_rotating`和`exec_after_rotating`的内置环境变量
 
@@ -429,13 +497,21 @@ $ logpipe -f $HOME/etc/logpipe.conf --start-once-for-env "start_once_for_full_do
 { "plugin":"so/logpipe-input-file.so" , "path":"/home/calvin/log" , "exec_before_rotating":"echo \"BEFORE ROTATING ${LOGPIPE_ROTATING_OLD_FILENAME}\">>/tmp/logpipe_case2_collector.log" , "rotate_size":10 , "exec_after_rotating":"echo \"AFTER ROTATING ${LOGPIPE_ROTATING_NEW_FILENAME}\">>/tmp/logpipe_case2_collector.log" , "compress_algorithm":"deflate" }
 ```
 
+注意：日志函数库或类库写日志一般有两种方式：每次写完都关闭、打开后不停写，后者如Nginx，大小转档必须在`exec_after_rotating`设置命令发送信号给应用进程迫使它新建日志文件
+
+```
+{ "plugin":"so/logpipe-input-file.so" , "path":"/home/calvin/log" , "rotate_size":10000000 , "exec_after_rotating":"ps -f -u $USER | grep -w nginx | awk '{print $2}' | xargs kill -USR1" }
+```
+
 ### 4.2.2. logpipe-output-file
+
+输出日志到目标目录，合并相同文件名。
 
 配置项
 
 * `path` : 受到监控的目录，监控新建文件事件和文件新追加数据事件；建议用绝对路径；必选
 * `uncompress_algorithm` : 落地数据前解压，目前算法只有"deflate"；可选
-* `rotate_size` : 文件大小转档阈值，当受监控文件大小超过该大小时自动改名为"_(原文件名-日期_时间_微秒)"并脱离监控；不填或0为关闭；可选
+* `rotate_size` : 文件大小转档阈值，当受监控文件大小超过该大小时自动改名为"_(原文件名-日期_时间_微秒)"并脱离监控；不填或0为关闭；支持单位后缀，如MB；可选
 * `exec_after_rotating` : 触发文件大小转档后要执行的命令（如转档后压缩保存日志文件节省存储空间），命令中出现的`"`用`\"`转义，可使用内置环境变量；同步执行；可选
 
 配置项exec_after_rotating`的内置环境变量
@@ -451,6 +527,8 @@ $ logpipe -f $HOME/etc/logpipe.conf --start-once-for-env "start_once_for_full_do
 
 ### 4.2.3. logpipe-input-tcp
 
+创建TCP服务侦听，接受通讯连接，接收通讯数据。
+
 配置项
 
 * `ip` : 服务端侦听IP；必选
@@ -464,15 +542,86 @@ $ logpipe -f $HOME/etc/logpipe.conf --start-once-for-env "start_once_for_full_do
 
 ### 4.2.4. logpipe-output-tcp
 
+连接TCP服务端，发送通讯数据。
+
 配置项
 
 * `ip` : 连接服务端IP；必选
 * `port` : 连接服务端PORT；必选
+* `ip2~8` : 其它服务端IP；可选，当存在多个服务端时，按轮询算法负载均衡输出
+* `port2~8` : 其它服务端PORT；可选
+* `disable_timeout` : 当某一个服务端不可连接时，暂禁时间（单位：秒）；可选，缺省60秒
 
 示例
 
 ```
 { "plugin":"so/logpipe-output-tcp.so" , "ip":"158.1.0.55" , "port":5151 }
+```
+
+### 4.2.5. logpipe-input-exec
+
+执行长生命周期命令，捕获标准输出。
+
+配置项
+
+* `cmd` : 长时间运行的命令；建议用绝对路径；必选
+* `compress_algorithm` : 采集数据后压缩，目前算法只有"deflate"；可选
+* `output_filename` : 假装文件名；必选
+
+示例
+
+```
+{ "plugin":"so/logpipe-input-exec.so" , "cmd":"tail -F /home/ecif/log/a.log" , "compress_algorithm":"deflate" , "output_filename":"my_filename.log" }
+```
+
+### 4.2.6. logpipe-output-hdfs
+
+存储日志到HDFS。启动时在配置父目录中创建"YYYYMMDD_hhmmss"子目录，存储日志，合并相同文件名；日期切换时在配置父目录中创建"YYYYMMDD"子目录，存储日志。
+
+配置项
+
+* `name_node` : HDFS名字节点名或主机名；必选
+* `port` : HDFS名字节点端口；必选
+* `user` : 登录用户名；可选
+* `path` : HDFS输出目录，绝对路径，启动时会创建目录"path/%Y%m%d_%H%M%S"，输出相同文件名到该目录下，切换日期后自动创建目录"path/%Y%m%d"，输出相同文件名到该目录下；必选
+* `uncompress_algorithm` : 落地数据前解压，目前算法只有"deflate"；可选
+
+示例
+
+```
+{ "plugin":"so/logpipe-output-hdfs.so" , "name_node":"192.168.6.21" , "port":9000 , "user":"hdfs" , "path":"/log" }
+```
+
+### 4.2.7. logpipe-output-ek
+
+按行格式化列，存储到ElasticSearch。
+
+配置项
+
+* `uncompress_algorithm` : 导出数据前解压，目前算法只有"deflate"；可选
+* `translate_charset` : 导出数据前替换源字符集合，参考tr命令；可选
+* `separator_charset` : 导出数据前替换目标字符集合，参考tr命令，同时也作为分词分割字符集合；可选
+* `grep` : 导出数据前过滤子串；可选
+* `fields_strictly` : 如果"true"或"yes"，则格式模板中某替换列在源数据中找不到，即替换列"$列号"要小于等于实际分解列数量，否则忽略该条数据；可选
+* `iconv_from` : 编码转换来源编码；可选
+* `iconv_to` : 编码转换目标编码；可选
+* `output_template` : 导出数据格式模板；必选
+* `ip` : ElasticSearch的IP；必选
+* `port` : ElasticSearch的IP；必选
+* `index` : ElasticSearch的index；必选
+* `type` : ElasticSearch的typ；必选
+
+示例
+
+```
+"inputs" : 
+[
+	{ "plugin":"so/logpipe-input-exec.so" , "cmd":"while [ 1 ] ; do echo `date +'%Y-%m-%d %H:%M:%S'` `vmstat 1 2 | tail -1 | awk '{printf \"%d %d %d %d\",$13,$14,$16,$15}'` `free | head -2 | tail -1 | awk '{printf \"%d %d %d\",$3,$6,$4 }'` `iostat -d 1 2 | grep -w sda | tail -1 | awk '{printf \"%f %f %f %f\",$4,$5,$6,$7}'` `sar -n DEV 1 2 | grep -w ens33 | head -2 | tail -1 | awk '{printf \"%f %f %f %f\",$3,$4,$5,$6}'`; sleep 1 ; done" , "output_filename":"system_monitor" }
+] ,
+"outputs" : 
+[
+	{ "plugin":"so/logpipe-output-ek.so" , "output_template":"{ \"trans_date\":\"$1\",\"trans_time\":\"$2\" , \"cpu_usr\":$3,\"cpu_sys\":$4,\"cpu_iowait\":$5,\"cpu_idle\":$6 , \"mem_used\":$7,\"mem_buffer_and_cache\":$8,\"mem_free\":$9 , \"disk_r_s\":$10,\"disk_w_s\":$11,\"disk_rKB_s\":$12,\"disk_wKB_s\":$13 , \"net_rPCK_s\":$14,\"net_wPCK_s\":$15,\"net_rKB_s\":$16,\"net_wKB_s\":$17 }" , "ip":"192.168.6.21" , "port":9200 , "index":"system_monitor" , "type":"data" }
+]
 ```
 
 # 5. 插件开发
@@ -538,6 +687,16 @@ int InitInputPluginContext( struct LogpipeEnv *p_env , struct LogpipeInputPlugin
 	return 0;
 }
 
+funcOnInputPluginIdle OnInputPluginIdle ; /* 空闲时执行，可选存在函数 */
+int OnInputPluginIdle( struct LogpipeEnv *p_env , struct LogpipeInputPlugin *p_logpipe_input_plugin , void *p_context )
+{
+	struct InputPluginContext	*p_plugin_ctx = (struct InputPluginContext *)p_context ;
+	
+	...
+	
+	return 0;
+}
+
 funcOnInputPluginEvent OnInputPluginEvent ;
 int OnInputPluginEvent( struct LogpipeEnv *p_env , struct LogpipeInputPlugin *p_logpipe_input_plugin , void *p_context )
 {
@@ -548,8 +707,28 @@ int OnInputPluginEvent( struct LogpipeEnv *p_env , struct LogpipeInputPlugin *p_
 	return 0;
 }
 
+funcBeforeReadInputPlugin BeforeReadInputPlugin ; /* 所有读之前执行，可选存在函数 */
+int BeforeReadInputPlugin( struct LogpipeEnv *p_env , struct LogpipeInputPlugin *p_logpipe_input_plugin , void *p_context , uint32_t *p_file_offset , uint32_t *p_file_line )
+{
+	struct InputPluginContext	*p_plugin_ctx = (struct InputPluginContext *)p_context ;
+	
+	...
+	
+	return 0;
+}
+
 funcReadInputPlugin ReadInputPlugin ;
 int ReadInputPlugin( struct LogpipeEnv *p_env , struct LogpipeInputPlugin *p_logpipe_input_plugin , void *p_context , uint32_t *p_block_len , char *block_buf , int block_bufsize )
+{
+	struct InputPluginContext	*p_plugin_ctx = (struct InputPluginContext *)p_context ;
+	
+	...
+	
+	return 0;
+}
+
+funcAfterReadInputPlugin AfterReadInputPlugin ; /* 所有读之后执行，可选存在函数 */
+int AfterReadInputPlugin( struct LogpipeEnv *p_env , struct LogpipeInputPlugin *p_logpipe_input_plugin , void *p_context , uint32_t *p_file_offset , uint32_t *p_file_line );
 {
 	struct InputPluginContext	*p_plugin_ctx = (struct InputPluginContext *)p_context ;
 	
@@ -590,12 +769,14 @@ int UnloadInputPluginConfig( struct LogpipeEnv *p_env , struct LogpipeInputPlugi
 
 ```
 遍历所有输出插件
+	调用输入插件的BeforeReadOutputPlugin
 	调用输出插件的BeforeWriteOutputPlugin
 循环
 	调用输入插件的ReadInputPlugin
 	遍历所有输出插件
 		调用输出插件的WriteOutputPlugin
 遍历所有输出插件
+	调用输入插件的AfterReadOutputPlugin
 	调用输出插件的AfterWriteOutputPlugin
 ```
 
@@ -655,6 +836,16 @@ int InitOutputPluginContext( struct LogpipeEnv *p_env , struct LogpipeOutputPlug
 	return 0;
 }
 
+funcOnOutputPluginIdle OnOutputPluginIdle; /* 空闲时执行，可选存在函数 */
+int OnOutputPluginIdle( struct LogpipeEnv *p_env , struct LogpipeOutputPlugin *p_logpipe_output_plugin , void *p_context )
+{
+	struct OutputPluginContext	*p_plugin_ctx = (struct OutputPluginContext *)p_context ;
+	
+	...
+	
+	return 0;
+}
+
 funcOnOutputPluginEvent OnOutputPluginEvent;
 int OnOutputPluginEvent( struct LogpipeEnv *p_env , struct LogpipeOutputPlugin *p_logpipe_output_plugin , void *p_context )
 {
@@ -665,7 +856,7 @@ int OnOutputPluginEvent( struct LogpipeEnv *p_env , struct LogpipeOutputPlugin *
 	return 0;
 }
 
-funcBeforeWriteOutputPlugin BeforeWriteOutputPlugin ;
+funcBeforeWriteOutputPlugin BeforeWriteOutputPlugin ; /* 所有写之前执行，可选存在函数 */
 int BeforeWriteOutputPlugin( struct LogpipeEnv *p_env , struct LogpipeOutputPlugin *p_logpipe_output_plugin , void *p_context , uint16_t filename_len , char *filename )
 {
 	struct OutputPluginContext	*p_plugin_ctx = (struct OutputPluginContext *)p_context ;
@@ -685,7 +876,7 @@ int WriteOutputPlugin( struct LogpipeEnv *p_env , struct LogpipeOutputPlugin *p_
 	return 0;
 }
 
-funcAfterWriteOutputPlugin AfterWriteOutputPlugin ;
+funcAfterWriteOutputPlugin AfterWriteOutputPlugin ; /* 所有写之后执行，可选存在函数 */
 int AfterWriteOutputPlugin( struct LogpipeEnv *p_env , struct LogpipeOutputPlugin *p_logpipe_output_plugin , void *p_context , uint16_t filename_len , char *filename )
 {
 	struct OutputPluginContext	*p_plugin_ctx = (struct OutputPluginContext *)p_context ;

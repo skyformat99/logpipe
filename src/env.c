@@ -8,6 +8,7 @@
 
 #include "logpipe_in.h"
 
+/* 初始化环境 */
 int InitEnvironment( struct LogpipeEnv *p_env )
 {
 	struct LogpipeInputPlugin	*p_logpipe_input_plugin = NULL ;
@@ -21,12 +22,12 @@ int InitEnvironment( struct LogpipeEnv *p_env )
 		nret = p_logpipe_output_plugin->pfuncInitOutputPluginContext( p_env , p_logpipe_output_plugin , p_logpipe_output_plugin->context ) ;
 		if( nret )
 		{
-			ERRORLOG( "[%s]->pfuncInitOutputPluginContext failed , errno[%d]" , p_logpipe_output_plugin->so_filename , errno );
+			ERRORLOGC( "[%s]->pfuncInitOutputPluginContext failed , errno[%d]" , p_logpipe_output_plugin->so_filename , errno )
 			return -1;
 		}
 		else
 		{
-			DEBUGLOG( "[%s]->pfuncInitOutputPluginContext ok" , p_logpipe_output_plugin->so_filename );
+			DEBUGLOGC( "[%s]->pfuncInitOutputPluginContext ok" , p_logpipe_output_plugin->so_filename )
 		}
 	}
 	
@@ -36,12 +37,12 @@ int InitEnvironment( struct LogpipeEnv *p_env )
 		nret = p_logpipe_input_plugin->pfuncInitInputPluginContext( p_env , p_logpipe_input_plugin , p_logpipe_input_plugin->context ) ;
 		if( nret )
 		{
-			ERRORLOG( "[%s]->pfuncInitInputPluginContext failed , errno[%d]" , p_logpipe_input_plugin->so_filename , errno );
+			ERRORLOGC( "[%s]->pfuncInitInputPluginContext failed , errno[%d]" , p_logpipe_input_plugin->so_filename , errno )
 			return -1;
 		}
 		else
 		{
-			DEBUGLOG( "[%s]->pfuncInitInputPluginContext ok" , p_logpipe_input_plugin->so_filename );
+			DEBUGLOGC( "[%s]->pfuncInitInputPluginContext ok" , p_logpipe_input_plugin->so_filename )
 		}
 		
 		if( p_logpipe_input_plugin->fd < 0 )
@@ -53,6 +54,7 @@ int InitEnvironment( struct LogpipeEnv *p_env )
 	return 0;
 }
 
+/* 销毁环境 */
 void CleanEnvironment( struct LogpipeEnv *p_env )
 {
 	struct LogpipeInputPlugin	*p_logpipe_input_plugin = NULL ;
@@ -67,7 +69,7 @@ void CleanEnvironment( struct LogpipeEnv *p_env )
 		{
 			if( p_logpipe_input_plugin->fd >= 0 )
 			{
-				INFOLOG( "epoll_ctl[%d] del input plugin fd[%d]" , p_env->epoll_fd , p_logpipe_input_plugin->fd );
+				INFOLOGC( "epoll_ctl[%d] del input plugin fd[%d]" , p_env->epoll_fd , p_logpipe_input_plugin->fd )
 				epoll_ctl( p_env->epoll_fd , EPOLL_CTL_DEL , p_logpipe_input_plugin->fd , NULL );
 			}
 		}
@@ -75,12 +77,12 @@ void CleanEnvironment( struct LogpipeEnv *p_env )
 		nret = p_logpipe_input_plugin->pfuncCleanInputPluginContext( p_env , p_logpipe_input_plugin , p_logpipe_input_plugin->context ) ;
 		if( nret )
 		{
-			ERRORLOG( "[%s]->pfuncCleanInputPluginContext failed , errno[%d]" , p_logpipe_input_plugin->so_filename , errno );
+			ERRORLOGC( "[%s]->pfuncCleanInputPluginContext failed , errno[%d]" , p_logpipe_input_plugin->so_filename , errno )
 			return;
 		}
 		else
 		{
-			DEBUGLOG( "[%s]->pfuncCleanInputPluginContext ok" , p_logpipe_input_plugin->so_filename );
+			DEBUGLOGC( "[%s]->pfuncCleanInputPluginContext ok" , p_logpipe_input_plugin->so_filename )
 		}
 	}
 	
@@ -91,7 +93,7 @@ void CleanEnvironment( struct LogpipeEnv *p_env )
 		{
 			if( p_logpipe_output_plugin->fd >= 0 )
 			{
-				INFOLOG( "epoll_ctl[%d] del output plugin fd[%d]" , p_env->epoll_fd , p_logpipe_output_plugin->fd );
+				INFOLOGC( "epoll_ctl[%d] del output plugin fd[%d]" , p_env->epoll_fd , p_logpipe_output_plugin->fd )
 				epoll_ctl( p_env->epoll_fd , EPOLL_CTL_DEL , p_logpipe_output_plugin->fd , NULL );
 			}
 		}
@@ -99,18 +101,19 @@ void CleanEnvironment( struct LogpipeEnv *p_env )
 		nret = p_logpipe_output_plugin->pfuncCleanOutputPluginContext( p_env , p_logpipe_output_plugin , p_logpipe_output_plugin->context ) ;
 		if( nret )
 		{
-			ERRORLOG( "[%s]->pfuncCleanOutputPluginContext failed , errno[%d]" , p_logpipe_output_plugin->so_filename , errno );
+			ERRORLOGC( "[%s]->pfuncCleanOutputPluginContext failed , errno[%d]" , p_logpipe_output_plugin->so_filename , errno )
 			return;
 		}
 		else
 		{
-			DEBUGLOG( "[%s]->pfuncCleanOutputPluginContext ok" , p_logpipe_output_plugin->so_filename );
+			DEBUGLOGC( "[%s]->pfuncCleanOutputPluginContext ok" , p_logpipe_output_plugin->so_filename )
 		}
 	}
 	
 	return;
 }
 
+/* 注册输入插件epoll事件 */
 void AddInputPluginEvent( struct LogpipeEnv *p_env , struct LogpipeInputPlugin *p_logpipe_input_plugin , int fd )
 {
 	struct epoll_event	event ;
@@ -126,16 +129,17 @@ void AddInputPluginEvent( struct LogpipeEnv *p_env , struct LogpipeInputPlugin *
 	nret = epoll_ctl( p_env->epoll_fd , EPOLL_CTL_ADD , p_logpipe_input_plugin->fd , & event ) ;
 	if( nret == -1 )
 	{
-		ERRORLOG( "epoll_ctl[%d] add input plugin fd[%d] EPOLLIN failed , errno[%d]" , p_env->epoll_fd , p_logpipe_input_plugin->fd , errno );
+		ERRORLOGC( "epoll_ctl[%d] add input plugin fd[%d] EPOLLIN failed , errno[%d]" , p_env->epoll_fd , p_logpipe_input_plugin->fd , errno )
 	}
 	else
 	{
-		INFOLOG( "epoll_ctl[%d] add input plugin fd[%d] EPOLLIN ok" , p_env->epoll_fd , p_logpipe_input_plugin->fd );
+		INFOLOGC( "epoll_ctl[%d] add input plugin fd[%d] EPOLLIN ok" , p_env->epoll_fd , p_logpipe_input_plugin->fd )
 	}
 	
 	return;
 }
 
+/* 注册输出插件epoll事件 */
 void AddOutputPluginEvent( struct LogpipeEnv *p_env , struct LogpipeOutputPlugin *p_logpipe_output_plugin , int fd )
 {
 	struct epoll_event	event ;
@@ -151,31 +155,36 @@ void AddOutputPluginEvent( struct LogpipeEnv *p_env , struct LogpipeOutputPlugin
 	nret = epoll_ctl( p_env->epoll_fd , EPOLL_CTL_ADD , p_logpipe_output_plugin->fd , & event ) ;
 	if( nret == -1 )
 	{
-		ERRORLOG( "epoll_ctl[%d] add output plugin fd[%d] EPOLLIN failed , errno[%d]" , p_env->epoll_fd , p_logpipe_output_plugin->fd , errno );
+		ERRORLOGC( "epoll_ctl[%d] add output plugin fd[%d] EPOLLIN failed , errno[%d]" , p_env->epoll_fd , p_logpipe_output_plugin->fd , errno )
 	}
 	else
 	{
-		INFOLOG( "epoll_ctl[%d] add output plugin fd[%d] EPOLLIN ok" , p_env->epoll_fd , p_logpipe_output_plugin->fd );
+		INFOLOGC( "epoll_ctl[%d] add output plugin fd[%d] EPOLLIN ok" , p_env->epoll_fd , p_logpipe_output_plugin->fd )
 	}
 	
 	return;
 }
 
+/* 删除输入插件epoll事件 */
 void DeleteInputPluginEvent( struct LogpipeEnv *p_env , struct LogpipeInputPlugin *p_logpipe_input_plugin , int fd )
 {
 	epoll_ctl( p_env->epoll_fd , EPOLL_CTL_DEL , fd , NULL );
 	return;
 }
 
+/* 删除输出插件epoll事件 */
 void DeleteOutputPluginEvent( struct LogpipeEnv *p_env , struct LogpipeOutputPlugin *p_logpipe_output_plugin , int fd )
 {
 	epoll_ctl( p_env->epoll_fd , EPOLL_CTL_DEL , fd , NULL );
 	return;
 }
 
+/* 新增输入插件子会话 */
 struct LogpipeInputPlugin *AddInputPluginSession( struct LogpipeEnv *p_env , char *so_filename
 						, funcOnInputPluginEvent *pfuncOnInputPluginEvent
+						, funcBeforeReadInputPlugin *pfuncBeforeReadInputPlugin
 						, funcReadInputPlugin *pfuncReadInputPlugin
+						, funcAfterReadInputPlugin *pfuncAfterReadInputPlugin
 						, funcCleanInputPluginContext *pfuncCleanInputPluginContext , funcUnloadInputPluginConfig *pfuncUnloadInputPluginConfig
 						, int fd , void *context )
 {
@@ -199,7 +208,9 @@ struct LogpipeInputPlugin *AddInputPluginSession( struct LogpipeEnv *p_env , cha
 	}
 	
 	p_logpipe_input_plugin->pfuncOnInputPluginEvent = pfuncOnInputPluginEvent ;
+	p_logpipe_input_plugin->pfuncBeforeReadInputPlugin = pfuncBeforeReadInputPlugin ;
 	p_logpipe_input_plugin->pfuncReadInputPlugin = pfuncReadInputPlugin ;
+	p_logpipe_input_plugin->pfuncAfterReadInputPlugin = pfuncAfterReadInputPlugin ;
 	p_logpipe_input_plugin->pfuncCleanInputPluginContext = pfuncCleanInputPluginContext ;
 	p_logpipe_input_plugin->pfuncUnloadInputPluginConfig = pfuncUnloadInputPluginConfig ;
 	
@@ -214,13 +225,13 @@ struct LogpipeInputPlugin *AddInputPluginSession( struct LogpipeEnv *p_env , cha
 		nret = epoll_ctl( p_env->epoll_fd , EPOLL_CTL_ADD , p_logpipe_input_plugin->fd , & event ) ;
 		if( nret == -1 )
 		{
-			ERRORLOG( "epoll_ctl[%d] add input plugin fd[%d] failed , errno[%d]" , p_env->epoll_fd , p_logpipe_input_plugin->fd , errno );
+			ERRORLOGC( "epoll_ctl[%d] add input plugin fd[%d] failed , errno[%d]" , p_env->epoll_fd , p_logpipe_input_plugin->fd , errno )
 			free( p_logpipe_input_plugin );
 			return NULL;
 		}
 		else
 		{
-			INFOLOG( "epoll_ctl[%d] add input plugin fd[%d] ok" , p_env->epoll_fd , p_logpipe_input_plugin->fd );
+			INFOLOGC( "epoll_ctl[%d] add input plugin fd[%d] ok" , p_env->epoll_fd , p_logpipe_input_plugin->fd )
 		}
 	}
 	
@@ -229,6 +240,7 @@ struct LogpipeInputPlugin *AddInputPluginSession( struct LogpipeEnv *p_env , cha
 	return p_logpipe_input_plugin;
 }
 
+/* 删除输入插件子会话 */
 void RemoveInputPluginSession( struct LogpipeEnv *p_env , struct LogpipeInputPlugin *p_logpipe_input_plugin )
 {
 	int		nret = 0 ;
@@ -237,7 +249,7 @@ void RemoveInputPluginSession( struct LogpipeEnv *p_env , struct LogpipeInputPlu
 	{
 		if( p_logpipe_input_plugin->fd >= 0 )
 		{
-			INFOLOG( "epoll_ctl[%d] del input plugin fd[%d]" , p_env->epoll_fd , p_logpipe_input_plugin->fd );
+			INFOLOGC( "epoll_ctl[%d] del input plugin fd[%d]" , p_env->epoll_fd , p_logpipe_input_plugin->fd )
 			epoll_ctl( p_env->epoll_fd , EPOLL_CTL_DEL , p_logpipe_input_plugin->fd , NULL );
 		}
 	}
@@ -245,11 +257,11 @@ void RemoveInputPluginSession( struct LogpipeEnv *p_env , struct LogpipeInputPlu
 	nret = p_logpipe_input_plugin->pfuncCleanInputPluginContext( p_env , p_logpipe_input_plugin , p_logpipe_input_plugin->context ) ;
 	if( nret )
 	{
-		ERRORLOG( "[%s]->pfuncCleanInputPluginContext failed , errno[%d]" , p_logpipe_input_plugin->so_filename , errno );
+		ERRORLOGC( "[%s]->pfuncCleanInputPluginContext failed , errno[%d]" , p_logpipe_input_plugin->so_filename , errno )
 	}
 	else
 	{
-		DEBUGLOG( "[%s]->pfuncCleanInputPluginContext ok" , p_logpipe_input_plugin->so_filename );
+		DEBUGLOGC( "[%s]->pfuncCleanInputPluginContext ok" , p_logpipe_input_plugin->so_filename )
 	}
 	
 	UnloadInputPluginSession( p_env , p_logpipe_input_plugin );

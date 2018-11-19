@@ -11,6 +11,8 @@ MAKEFILE_POSTFIX=.Linux
 DIROBJS		= \
 			src \
 			src-plugins \
+			shbin \
+			test \
 
 ###### 加载mktpl模板库
 # 文件系统宏
@@ -26,7 +28,6 @@ all		:	make
 # make规则
 .PHONY:make
 make	:
-	ps
 	@for i in $(DIROBJS) ; do \
 		if [ -d "$$i" ] ; then \
 			if [ -f "$$i/makefile$(MAKEFILE_POSTFIX)" ] ; then \
